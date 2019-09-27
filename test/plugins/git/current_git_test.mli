@@ -2,9 +2,13 @@
 
 module Commit : sig
   type t
+
   val v : repo:string -> hash:string -> t
+
   val equal : t -> t -> bool
+
   val pp : t Fmt.t
+
   val digest : t -> string
 end
 

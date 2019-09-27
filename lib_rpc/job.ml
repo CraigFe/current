@@ -28,12 +28,13 @@ let status t =
   Capability.call_for_value t method_id request >|= function
   | Error e -> Error (`Capnp e)
   | Ok x ->
-    Ok {
-      id = Results.id_get x;
-      description = Results.description_get x;
-      can_cancel = Results.can_cancel_get x;
-      can_rebuild = Results.can_rebuild_get x;
-    }
+      Ok
+        {
+          id = Results.id_get x;
+          description = Results.description_get x;
+          can_cancel = Results.can_cancel_get x;
+          can_rebuild = Results.can_rebuild_get x;
+        }
 
 let cancel t =
   let open Job.Cancel in

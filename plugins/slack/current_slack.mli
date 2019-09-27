@@ -7,5 +7,5 @@ val channel : Uri.t -> channel
 
 val post : channel -> key:string -> string Current.t -> unit Current.t
 (** [post channel ~key message] records that [key] is now set to [message], and
-    posts [message] to [channel] if it has changed.
-    e.g. [post to_dev ~key:"build-status" s] *)
+    posts [message] to [channel] if it has changed. e.g.
+    [post to_dev ~key:"build-status" s] *)

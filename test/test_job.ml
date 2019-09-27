@@ -1,5 +1,4 @@
 open Lwt.Infix
-
 module Job = Current.Job
 
 let read path =
@@ -8,13 +7,10 @@ let read path =
   close_in ch;
   data
 
-let ( >>!= ) x f =
-  x >>= function
-  | Ok y -> f y
-  | Error `Msg m -> failwith m
+let ( >>!= ) x f = x >>= function Ok y -> f y | Error (`Msg m) -> failwith m
 
 let streams _switch () =
-  Job.timestamp := (fun () -> 0.0);
+  (Job.timestamp := fun () -> 0.0);
   let switch = Current.Switch.create ~label:"streams" () in
   let config = Current.Config.v () in
   let job = Job.create ~switch ~label:"streams" ~config () in
@@ -25,12 +21,18 @@ let streams _switch () =
   Current.Switch.turn_off switch @@ Ok () >>= fun () ->
   assert (Lwt.state log_data != Lwt.Sleep);
   let path = Job.log_path (Job.id job) |> Stdlib.Result.get_ok in
-  Alcotest.(check string) "Combined results" "1970-01-01 00:00.00: Exec: \"sh\" \"-c\" \"echo out1; echo >&2 out2; echo out3\"\n\
-                                              out1\nout2\nout3\n" (read path);
+  Alcotest.(check string)
+    "Combined results"
+    "1970-01-01 00:00.00: Exec: \"sh\" \"-c\" \"echo out1; echo >&2 out2; \
+     echo out3\"\n\
+     out1\n\
+     out2\n\
+     out3\n"
+    (read path);
   Lwt.return_unit
 
 let output _switch () =
-  Job.timestamp := (fun () -> 0.0);
+  (Job.timestamp := fun () -> 0.0);
   let switch = Current.Switch.create ~label:"output" () in
   let config = Current.Config.v () in
   let job = Job.create ~switch ~label:"output" ~config () in
@@ -39,12 +41,16 @@ let output _switch () =
   Current.Switch.turn_off switch @@ Ok () >>= fun () ->
   Alcotest.(check string) "Output" "out1\nout3\n" out;
   let path = Job.log_path (Job.id job) |> Stdlib.Result.get_ok in
-  Alcotest.(check string) "Log" "1970-01-01 00:00.00: Exec: \"sh\" \"-c\" \"echo out1; echo >&2 out2; echo out3\"\n\
-                                 out2\n" (read path);
+  Alcotest.(check string)
+    "Log"
+    "1970-01-01 00:00.00: Exec: \"sh\" \"-c\" \"echo out1; echo >&2 out2; \
+     echo out3\"\n\
+     out2\n"
+    (read path);
   Lwt.return_unit
 
 let cancel _switch () =
-  Job.timestamp := (fun () -> 0.0);
+  (Job.timestamp := fun () -> 0.0);
   let switch = Current.Switch.create ~label:"cancel" () in
   let config = Current.Config.v () in
   let job = Job.create ~switch ~label:"output" ~config () in
@@ -52,14 +58,19 @@ let cancel _switch () =
   let thread = Current.Process.exec ~switch ~job cmd in
   Current.Switch.turn_off switch @@ Error (`Msg "Timeout") >>= fun () ->
   thread >>= fun res ->
-  begin match res with
-    | Ok () -> Alcotest.fail "Should have failed!"
-    | Error `Msg m when Astring.String.is_prefix ~affix:"Command \"sleep\" \"120\" failed with signal" m -> ()
-    | Error `Msg m -> Alcotest.failf "Expected signal error, not %S" m
-  end;
+  ( match res with
+  | Ok () -> Alcotest.fail "Should have failed!"
+  | Error (`Msg m)
+    when Astring.String.is_prefix
+           ~affix:"Command \"sleep\" \"120\" failed with signal" m ->
+      ()
+  | Error (`Msg m) -> Alcotest.failf "Expected signal error, not %S" m );
   let path = Job.log_path (Job.id job) |> Stdlib.Result.get_ok in
-  Alcotest.(check string) "Log" "1970-01-01 00:00.00: Exec: \"sleep\" \"120\"\n\
-                                 1970-01-01 00:00.00: Timeout\n" (read path);
+  Alcotest.(check string)
+    "Log"
+    "1970-01-01 00:00.00: Exec: \"sleep\" \"120\"\n\
+     1970-01-01 00:00.00: Timeout\n"
+    (read path);
   Lwt.return_unit
 
 let tests =

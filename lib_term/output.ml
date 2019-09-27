@@ -1,8 +1,6 @@
-type active = [`Ready | `Running]
-  [@@deriving eq]
+type active = [ `Ready | `Running ] [@@deriving eq]
 
-type 'a t = ('a, [`Active of active | `Msg of string]) result
-  [@@deriving eq]
+type 'a t = ('a, [ `Active of active | `Msg of string ]) result [@@deriving eq]
 
 let pp ok f = function
   | Ok x -> Fmt.pf f "Ok: %a" ok x

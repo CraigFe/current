@@ -9,10 +9,7 @@ type t = {
 let id = "docker-build"
 
 let use_pool pool f =
-  match pool with
-  | None -> f ()
-  | Some pool ->
-    Lwt_pool.use pool f
+  match pool with None -> f () | Some pool -> Lwt_pool.use pool f
 
 module Key = struct
   type t = {
@@ -25,18 +22,20 @@ module Key = struct
   let digest_dockerfile = function
     | None -> None
     | Some contents -> Some (Digest.string contents |> Digest.to_hex)
-                         
+
   let source_to_json = function
     | `No_context -> `Null
     | `Git commit -> `String (Current_git.Commit.id commit)
 
   let to_json { commit; dockerfile; docker_context; squash } =
-    `Assoc [
-      "commit", source_to_json commit;
-      "dockerfile", [%derive.to_yojson:string option] (digest_dockerfile dockerfile);
-      "docker_context", [%derive.to_yojson:string option] docker_context;
-      "squash", [%derive.to_yojson:bool] squash;
-    ]
+    `Assoc
+      [
+        ("commit", source_to_json commit);
+        ( "dockerfile",
+          [%derive.to_yojson: string option] (digest_dockerfile dockerfile) );
+        ("docker_context", [%derive.to_yojson: string option] docker_context);
+        ("squash", [%derive.to_yojson: bool] squash);
+      ]
 
   let digest t = Yojson.Safe.to_string (to_json t)
 
@@ -45,13 +44,9 @@ end
 
 module Value = Image
 
-let errorf fmt =
-  fmt |> Fmt.kstrf @@ fun msg ->
-  Error (`Msg msg)
+let errorf fmt = fmt |> Fmt.kstrf @@ fun msg -> Error (`Msg msg)
 
-let or_raise = function
-  | Ok () -> ()
-  | Error (`Msg m) -> raise (Failure m)
+let or_raise = function Ok () -> () | Error (`Msg m) -> raise (Failure m)
 
 let with_context ~switch ~job context fn =
   match context with
@@ -60,30 +55,32 @@ let with_context ~switch ~job context fn =
 
 let build ~switch { pull; pool; timeout } job key =
   let { Key.commit; docker_context; dockerfile; squash } = key in
-  dockerfile |> Option.iter (fun contents ->
-      Current.Job.log job "@[<v2>Using Dockerfile:@,%a@]" Fmt.lines contents
-    );
+  dockerfile
+  |> Option.iter (fun contents ->
+         Current.Job.log job "@[<v2>Using Dockerfile:@,%a@]" Fmt.lines contents);
   use_pool pool @@ fun () ->
   Current.Job.start ?timeout job ~level:Current.Level.Average >>= fun () ->
   with_context ~switch ~job commit @@ fun dir ->
-  dockerfile |> Option.iter (fun contents ->
-      Bos.OS.File.write Fpath.(dir / "Dockerfile") (contents ^ "\n") |> or_raise;
-    );
-  let pull = if pull then ["--pull"] else [] in
-  let squash = if squash then ["--squash"] else [] in
+  dockerfile
+  |> Option.iter (fun contents ->
+         Bos.OS.File.write Fpath.(dir / "Dockerfile") (contents ^ "\n")
+         |> or_raise);
+  let pull = if pull then [ "--pull" ] else [] in
+  let squash = if squash then [ "--squash" ] else [] in
   let iidfile = Fpath.add_seg dir "docker-iid" in
-  let cmd = Cmd.docker ~docker_context @@ ["build"] @
-                                          pull @ squash @
-                                          ["--iidfile";
-                                           Fpath.to_string iidfile; "--";
-                                           Fpath.to_string dir] in
+  let cmd =
+    Cmd.docker ~docker_context @@ [ "build" ] @ pull @ squash
+    @ [ "--iidfile"; Fpath.to_string iidfile; "--"; Fpath.to_string dir ]
+  in
   let pp_error_command f = Fmt.string f "Docker build" in
-  Current.Process.exec ~switch ?stdin:dockerfile ~pp_error_command ~job cmd >|= function
+  Current.Process.exec ~switch ?stdin:dockerfile ~pp_error_command ~job cmd
+  >|= function
   | Error _ as e -> e
   | Ok () ->
-    Bos.OS.File.read iidfile |> Stdlib.Result.map @@ fun hash ->
-    Log.info (fun f -> f "Built docker image %s" hash);
-    Image.of_hash hash
+      Bos.OS.File.read iidfile
+      |> Stdlib.Result.map @@ fun hash ->
+         Log.info (fun f -> f "Built docker image %s" hash);
+         Image.of_hash hash
 
 let pp f key = Fmt.pf f "@[<v2>docker build %a@]" Key.pp key
 

@@ -34,38 +34,36 @@ open Capnp_rpc_lwt
 let () = Logging.init ~level:Logs.Warning ()
 
 let list_jobs engine =
-  Current_rpc.Engine.active_jobs engine |> Lwt_result.map @@ fun jobs ->
-  List.iter print_endline jobs
+  Current_rpc.Engine.active_jobs engine
+  |> Lwt_result.map @@ fun jobs -> List.iter print_endline jobs
 
 let show_log job =
   let rec aux start =
     Current_rpc.Job.log ~start job >>= function
     | Error _ as e -> Lwt.return e
     | Ok (data, next) ->
-      if data = "" then Lwt_result.return ()
-      else (
-        output_string stdout data;
-        flush stdout;
-        aux next
-      )
+        if data = "" then Lwt_result.return ()
+        else (
+          output_string stdout data;
+          flush stdout;
+          aux next )
   in
   aux 0L
 
 let show_status job =
-  Current_rpc.Job.status job |> Lwt_result.map @@
-  fun { Current_rpc.Job.id; description; can_cancel; can_rebuild } ->
-  Fmt.pr "@[<v2>Job %S:@,\
-          Description: @[%a@]@,\
-          Can cancel: %b@,\
-          Can rebuild: %b@]@."
-    id
-    Fmt.lines description
-    can_cancel
-    can_rebuild
+  Current_rpc.Job.status job
+  |> Lwt_result.map
+     @@ fun { Current_rpc.Job.id; description; can_cancel; can_rebuild } ->
+     Fmt.pr
+       "@[<v2>Job %S:@,\
+        Description: @[%a@]@,\
+        Can cancel: %b@,\
+        Can rebuild: %b@]@."
+       id Fmt.lines description can_cancel can_rebuild
 
 let cancel job =
-  Current_rpc.Job.cancel job |> Lwt_result.map @@ fun () ->
-  Fmt.pr "Cancelled@."
+  Current_rpc.Job.cancel job
+  |> Lwt_result.map @@ fun () -> Fmt.pr "Cancelled@."
 
 let rebuild job =
   Fmt.pr "Requesting rebuild...@.";
@@ -79,44 +77,44 @@ let main ?job_id ~job_op engine_url =
   match job_id with
   | None -> list_jobs engine
   | Some job_id ->
-    let job = Current_rpc.Engine.job engine job_id in
-    Lwt.finalize
-      (fun () -> job_op job)
-      (fun () -> Capability.dec_ref job; Lwt.return_unit)
+      let job = Current_rpc.Engine.job engine job_id in
+      Lwt.finalize
+        (fun () -> job_op job)
+        (fun () ->
+          Capability.dec_ref job;
+          Lwt.return_unit)
 
 (* Command-line parsing *)
 
 open Cmdliner
 
 let cap =
-  Arg.required @@
-  Arg.pos 0 Arg.(some Capnp_rpc_unix.sturdy_uri) None @@
-  Arg.info
-    ~doc:"The engine.cap file."
-    ~docv:"CAP"
-    []
+  Arg.required
+  @@ Arg.pos 0 Arg.(some Capnp_rpc_unix.sturdy_uri) None
+  @@ Arg.info ~doc:"The engine.cap file." ~docv:"CAP" []
 
 let job =
-  Arg.value @@
-  Arg.pos 1 Arg.(some string) None @@
-  Arg.info
-    ~doc:"The job ID to act upon. If not given, it shows a list of active job IDs."
-    ~docv:"JOB"
-    []
+  Arg.value
+  @@ Arg.pos 1 Arg.(some string) None
+  @@ Arg.info
+       ~doc:
+         "The job ID to act upon. If not given, it shows a list of active job \
+          IDs."
+       ~docv:"JOB" []
 
 let job_op =
-  let ops = [
-    "log", `Show_log;
-    "status", `Show_status;
-    "cancel", `Cancel;
-    "rebuild", `Rebuild;
-  ] in
-  Arg.value @@
-  Arg.pos 2 Arg.(enum ops) `Show_status @@
-  Arg.info
-    ~doc:"The operation to perform (log, status, cancel or rebuild)."
-    ~docv:"METHOD"
-    []
+  let ops =
+    [
+      ("log", `Show_log);
+      ("status", `Show_status);
+      ("cancel", `Cancel);
+      ("rebuild", `Rebuild);
+    ]
+  in
+  Arg.value
+  @@ Arg.pos 2 Arg.(enum ops) `Show_status
+  @@ Arg.info ~doc:"The operation to perform (log, status, cancel or rebuild)."
+       ~docv:"METHOD" []
 
 (* (cmdliner's [enum] can't cope with functions) *)
 let to_fn = function
@@ -131,10 +129,13 @@ let cmd =
     let job_op = to_fn job_op in
     match Lwt_main.run (main ?job_id ~job_op engine) with
     | Ok () -> ()
-    | Error `Capnp ex -> Fmt.epr "%a@." Capnp_rpc.Error.pp ex; exit 1
-    | Error `Msg m -> Fmt.epr "%s@." m; exit 1
+    | Error (`Capnp ex) ->
+        Fmt.epr "%a@." Capnp_rpc.Error.pp ex;
+        exit 1
+    | Error (`Msg m) ->
+        Fmt.epr "%s@." m;
+        exit 1
   in
-  Term.(const main $ cap $ job $ job_op),
-  Term.info "rpc_client" ~doc
+  (Term.(const main $ cap $ job $ job_op), Term.info "rpc_client" ~doc)
 
 let () = Term.(exit @@ eval cmd)

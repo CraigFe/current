@@ -6,9 +6,11 @@ let ( >>!= ) = Lwt_result.bind
 
 module Key = struct
   type t = {
-    repo : string;  (* Remote repository from which to pull. *)
+    repo : string;
+    (* Remote repository from which to pull. *)
     gref : string;
-  } [@@deriving to_yojson]
+  }
+  [@@deriving to_yojson]
 
   let pp f t = Yojson.Safe.pretty_print f (to_yojson t)
 
@@ -16,8 +18,7 @@ module Key = struct
 end
 
 module Value = Commit
-
-module Repo_map = Map.Make(String)
+module Repo_map = Map.Make (String)
 
 let repo_locks = ref Repo_map.empty
 
@@ -25,9 +26,9 @@ let repo_lock repo =
   match Repo_map.find_opt repo !repo_locks with
   | Some l -> l
   | None ->
-    let l = Lwt_mutex.create () in
-    repo_locks := Repo_map.add repo l !repo_locks;
-    l
+      let l = Lwt_mutex.create () in
+      repo_locks := Repo_map.add repo l !repo_locks;
+      l
 
 let id = "git-clone"
 
@@ -36,12 +37,13 @@ let build ~switch No_context job { Key.repo; gref } =
   Current.Job.start job ~level:Current.Level.Mostly_harmless >>= fun () ->
   let local_repo = Cmd.local_copy repo in
   (* Ensure we have a local clone of the repository. *)
-  begin
-    if Cmd.dir_exists local_repo
-    then Cmd.git_fetch ~switch ~job ~src:repo ~dst:local_repo (Fmt.strf "%s:refs/remotes/origin/%s" gref gref)
-    else Cmd.git_clone ~switch ~job ~src:repo local_repo
-  end >>!= fun () ->
-  Cmd.git_rev_parse ~switch ~job ~repo:local_repo ("origin/" ^ gref) >>!= fun hash ->
+  ( if Cmd.dir_exists local_repo then
+    Cmd.git_fetch ~switch ~job ~src:repo ~dst:local_repo
+      (Fmt.strf "%s:refs/remotes/origin/%s" gref gref)
+  else Cmd.git_clone ~switch ~job ~src:repo local_repo )
+  >>!= fun () ->
+  Cmd.git_rev_parse ~switch ~job ~repo:local_repo ("origin/" ^ gref)
+  >>!= fun hash ->
   let id = { Commit_id.repo; gref; hash } in
   Lwt.return @@ Ok { Commit.repo = local_repo; id }
 

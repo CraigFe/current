@@ -1,6 +1,7 @@
 module Server = Cohttp_lwt_unix.Server
 
-let css = {|
+let css =
+  {|
   body {
     margin: 0;
     padding: 0;
@@ -66,4 +67,5 @@ let css = {|
 let get () =
   let headers = Cohttp.Header.init_with "Content-Type" "text/css" in
   Server.respond_string ~status:`OK ~headers ~body:css ()
+
 (*   Server.respond_file ~fname:"style.css" () *)

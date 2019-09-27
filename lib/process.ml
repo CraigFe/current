@@ -1,7 +1,6 @@
 open Lwt.Infix
 
-let () =
-  Random.self_init ()
+let () = Random.self_init ()
 
 let failf fmt = fmt |> Fmt.kstrf @@ fun msg -> Error (`Msg msg)
 
@@ -23,22 +22,22 @@ let check_status cmd = function
   | Unix.WEXITED 0 -> Ok ()
   | Unix.WEXITED x -> failf "%t exited with status %d" cmd x
   | Unix.WSIGNALED x -> failf "%t failed with signal %d" cmd x
-  | Unix.WSTOPPED x ->
-      failf "%t stopped with signal %a" cmd pp_signal x
+  | Unix.WSTOPPED x -> failf "%t stopped with signal %a" cmd pp_signal x
 
 let make_tmp_dir ?(prefix = "tmp-") ?(mode = 0o700) parent =
   let rec mktmp = function
     | 0 -> Fmt.failwith "Failed to generate temporary directroy name!"
     | n -> (
-      let tmppath =
-        Printf.sprintf "%s/%s%x" parent prefix (Random.int 0x3fffffff)
-      in
-      try
-        Unix.mkdir tmppath mode;
-        tmppath
-      with Unix.Unix_error (Unix.EEXIST, _, _) ->
-        Log.warn (fun f -> f "Temporary directory %s already exists!" tmppath);
-        mktmp (n - 1) )
+        let tmppath =
+          Printf.sprintf "%s/%s%x" parent prefix (Random.int 0x3fffffff)
+        in
+        try
+          Unix.mkdir tmppath mode;
+          tmppath
+        with Unix.Unix_error (Unix.EEXIST, _, _) ->
+          Log.warn (fun f ->
+              f "Temporary directory %s already exists!" tmppath);
+          mktmp (n - 1) )
   in
   mktmp 10
 
@@ -58,19 +57,18 @@ let rm_f_tree root =
   rmtree root
 
 let with_tmpdir ?prefix fn =
-  let tmpdir = make_tmp_dir ?prefix ~mode:0o700 (Filename.get_temp_dir_name ()) in
+  let tmpdir =
+    make_tmp_dir ?prefix ~mode:0o700 (Filename.get_temp_dir_name ())
+  in
   Lwt.finalize
     (fun () -> fn (Fpath.v tmpdir))
     (fun () ->
       rm_f_tree tmpdir;
-      Lwt.return () )
+      Lwt.return ())
 
 let send_to ch contents =
   Lwt.try_bind
-    (fun () ->
-       Lwt_io.write ch contents >>= fun () ->
-       Lwt_io.close ch
-    )
+    (fun () -> Lwt_io.write ch contents >>= fun () -> Lwt_io.close ch)
     (fun () -> Lwt.return (Ok ()))
     (fun ex -> Lwt.return (Error (`Msg (Printexc.to_string ex))))
 
@@ -80,12 +78,16 @@ let copy_to_log ~job src =
   let rec aux () =
     Lwt_io.read ~count:4096 src >>= function
     | "" -> Lwt.return_unit
-    | data -> Job.write job data; aux ()
+    | data ->
+        Job.write job data;
+        aux ()
   in
   aux ()
 
-let exec ?switch ?(stdin="") ?pp_error_command ~job cmd =
-  let pp_error_command = Option.value pp_error_command ~default:(pp_command cmd) in
+let exec ?switch ?(stdin = "") ?pp_error_command ~job cmd =
+  let pp_error_command =
+    Option.value pp_error_command ~default:(pp_command cmd)
+  in
   Log.info (fun f -> f "Exec: @[%a@]" pp_cmd cmd);
   Job.log job "Exec: @[%a@]" pp_cmd cmd;
   let proc = Lwt_process.open_process ~stderr:(`FD_copy Unix.stdout) cmd in
@@ -93,20 +95,22 @@ let exec ?switch ?(stdin="") ?pp_error_command ~job cmd =
   Switch.add_hook_or_exec_opt switch (fun _reason ->
       if proc#state = Lwt_process.Running then (
         Log.info (fun f -> f "Cancelling %a" pp_cmd cmd);
-        proc#terminate;
-      );
-      Lwt.return_unit
-    ) >>= fun () ->
+        proc#terminate );
+      Lwt.return_unit)
+  >>= fun () ->
   send_to proc#stdin stdin >>= fun stdin_result ->
-  copy_thread >>= fun () -> (* Ensure all data has been copied before returning *)
+  copy_thread >>= fun () ->
+  (* Ensure all data has been copied before returning *)
   proc#status >|= fun status ->
   match check_status pp_error_command status with
   | Ok () -> stdin_result
   | Error _ as e -> e
 
-let check_output ?switch ?cwd ?(stdin="") ?pp_error_command ~job cmd =
+let check_output ?switch ?cwd ?(stdin = "") ?pp_error_command ~job cmd =
   let cwd = Option.map Fpath.to_string cwd in
-  let pp_error_command = Option.value pp_error_command ~default:(pp_command cmd) in
+  let pp_error_command =
+    Option.value pp_error_command ~default:(pp_command cmd)
+  in
   Log.info (fun f -> f "Exec: @[%a@]" pp_cmd cmd);
   Job.log job "Exec: @[%a@]" pp_cmd cmd;
   let proc = Lwt_process.open_process_full ?cwd cmd in
@@ -114,19 +118,16 @@ let check_output ?switch ?cwd ?(stdin="") ?pp_error_command ~job cmd =
   Switch.add_hook_or_exec_opt switch (fun _reason ->
       if proc#state = Lwt_process.Running then (
         Log.info (fun f -> f "Cancelling %a" pp_cmd cmd);
-        proc#terminate;
-      );
-      Lwt.return_unit
-    ) >>= fun () ->
+        proc#terminate );
+      Lwt.return_unit)
+  >>= fun () ->
   let reader = Lwt_io.read proc#stdout in
   send_to proc#stdin stdin >>= fun stdin_result ->
   reader >>= fun stdout ->
-  copy_thread >>= fun () -> (* Ensure all data has been copied before returning *)
+  copy_thread >>= fun () ->
+  (* Ensure all data has been copied before returning *)
   proc#status >|= fun status ->
   match check_status pp_error_command status with
   | Error _ as e -> e
-  | Ok () ->
-    match stdin_result with
-    | Error _ as e -> e
-    | Ok () ->
-      Ok stdout
+  | Ok () -> (
+      match stdin_result with Error _ as e -> e | Ok () -> Ok stdout )

@@ -28,36 +28,30 @@ let pipeline ~repo ~service () =
 let main config mode service repo =
   let repo = Git.Local.v (Fpath.v repo) in
   let engine = Current.Engine.create ~config (pipeline ~repo ~service) in
-  Logging.run begin
-    Lwt.choose [
-      Current.Engine.thread engine;
-      Current_web.run ~mode engine;
-    ]
-  end
+  Logging.run
+    (Lwt.choose [ Current.Engine.thread engine; Current_web.run ~mode engine ])
 
 (* Command-line parsing *)
 
 open Cmdliner
 
 let service =
-  Arg.required @@
-  Arg.opt Arg.(some string) None @@
-  Arg.info
-    ~doc:"The name of the Docker service to update."
-    ~docv:"NAME"
-    ["service"]
+  Arg.required
+  @@ Arg.opt Arg.(some string) None
+  @@ Arg.info ~doc:"The name of the Docker service to update." ~docv:"NAME"
+       [ "service" ]
 
 let repo =
-  Arg.value @@
-  Arg.pos 0 Arg.dir (Sys.getcwd ()) @@
-  Arg.info
-    ~doc:"The directory containing the .git subdirectory."
-    ~docv:"DIR"
-    []
+  Arg.value
+  @@ Arg.pos 0 Arg.dir (Sys.getcwd ())
+  @@ Arg.info ~doc:"The directory containing the .git subdirectory."
+       ~docv:"DIR" []
 
 let cmd =
   let doc = "Keep a Docker SwarmKit service up-to-date." in
-  Term.(const main $ Current.Config.cmdliner $ Current_web.cmdliner $ service $ repo),
-  Term.info "docker_service" ~doc
+  ( Term.(
+      const main $ Current.Config.cmdliner $ Current_web.cmdliner $ service
+      $ repo),
+    Term.info "docker_service" ~doc )
 
 let () = Term.(exit @@ eval cmd)

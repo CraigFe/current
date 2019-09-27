@@ -1,4 +1,4 @@
-type 'a or_error = ('a, [`Msg of string]) result
+type 'a or_error = ('a, [ `Msg of string ]) result
 
 module Level = Level
 
@@ -7,12 +7,16 @@ module Config : sig
 
   val v : ?auto_release:Duration.t -> ?confirm:Level.t -> unit -> t
   (** A new configuration.
-      @param auto_release Remove confirmation requirement this period (unless changed manually first).
-      @param confirm Confirm before performing operations at or above this level. *)
+
+      @param auto_release
+      Remove confirmation requirement this period (unless changed manually
+      first).
+      @param confirm
+      Confirm before performing operations at or above this level. *)
 
   val set_confirm : t -> Level.t option -> unit
-  (** Change the [confirm] setting. Existing jobs waiting for confirmation
-      will now start if permitted by the new configuration. *)
+  (** Change the [confirm] setting. Existing jobs waiting for confirmation will
+      now start if permitted by the new configuration. *)
 
   val get_confirm : t -> Level.t option
 
@@ -21,31 +25,35 @@ end
 
 type job_id = string
 
-class type actions = object
-  method pp : Format.formatter -> unit
-  (** Format a message for the user explaining what is being waited on. *)
+class type actions =
+  object
+    (** Format a message for the user explaining what is being waited on. *)
+    method pp : Format.formatter -> unit
 
-  method cancel : (unit -> unit) option
-  (** A function to call if the user explicitly requests the operation be cancelled,
-      or [None] if it is not something that can be cancelled. *)
+    (** A function to call if the user explicitly requests the operation be
+        cancelled, or [None] if it is not something that can be cancelled. *)
+    method cancel : (unit -> unit) option
 
-  method rebuild : (unit -> job_id) option
-  (** A function to call if the user explicitly requests the operation be done again,
-      or [None] if it is not something that can be repeated. Returns the new job ID. *)
+    (** A function to call if the user explicitly requests the operation be
+        done again, or [None] if it is not something that can be repeated.
+        Returns the new job ID. *)
+    method rebuild : (unit -> job_id) option
 
-  method release : unit
-  (** Called to release the caller's reference to the watch (reduce the
-      ref-count by 1). Some inputs may cancel a build if the ref-count
-      reaches zero. *)
-end
+    (** Called to release the caller's reference to the watch (reduce the
+        ref-count by 1). Some inputs may cancel a build if the ref-count
+        reaches zero. *)
+    method release : unit
+  end
 
 module Step : sig
   type t
+
   type id
 
   val id : t -> id
-  (** [id t] is a unique value for this evaluation step.
-      This can be useful to detect if e.g. the same output has been set to two different values in one step. *)
+  (** [id t] is a unique value for this evaluation step. This can be useful to
+      detect if e.g. the same output has been set to two different values in
+      one step. *)
 
   val config : t -> Config.t
 end
@@ -58,25 +66,27 @@ module Input : sig
   (** Information about a value of the input at some point. *)
 
   val const : 'a -> 'a t
-  (** [const x] is an input that always evaluates to [x] and never needs to be updated. *)
+  (** [const x] is an input that always evaluates to [x] and never needs to be
+      updated. *)
 
-  val metadata :
-    ?job_id:job_id ->
-    ?changed:unit Lwt.t ->
-    actions -> metadata
+  val metadata : ?job_id:job_id -> ?changed:unit Lwt.t -> actions -> metadata
   (** [metadata actions] is used to provide metadata about a value.
-      @param job_id An ID that can be used to refer to this job later (to request a rebuild, etc).
-      @param changed A Lwt promise that resolves when the input has changed (and so terms
-                     using it should be recalculated).
+
+      @param job_id
+      An ID that can be used to refer to this job later (to request a rebuild,
+      etc).
+      @param changed
+      A Lwt promise that resolves when the input has changed (and so terms
+      using it should be recalculated).
       @param actions Ways to interact with this input. *)
 
   val of_fn : (Step.t -> 'a Current_term.Output.t * metadata) -> 'a t
-  (** [of_fn f] is an input that calls [f config] when it is evaluated.
-      When [f] is called, the caller gets a ref-count on the watches and will
-      call [release] exactly once when each watch is no longer needed.
+  (** [of_fn f] is an input that calls [f config] when it is evaluated. When
+      [f] is called, the caller gets a ref-count on the watches and will call
+      [release] exactly once when each watch is no longer needed.
 
-      Note: the engine calls [f] in an evaluation before calling [release]
-      on the previous watches, so if the ref-count drops to zero then you can
+      Note: the engine calls [f] in an evaluation before calling [release] on
+      the previous watches, so if the ref-count drops to zero then you can
       cancel the job. *)
 end
 
@@ -106,9 +116,8 @@ include Current_term.S.TERM with type 'a input := 'a Input.t
 type 'a term = 'a t
 (** An alias of [t] to make it easy to refer to later in this file. *)
 
-module Analysis : Current_term.S.ANALYSIS with
-  type 'a term := 'a t and
-  type job_id := job_id
+module Analysis :
+  Current_term.S.ANALYSIS with type 'a term := 'a t and type job_id := job_id
 
 module Engine : sig
   type t
@@ -119,7 +128,8 @@ module Engine : sig
     value : unit Current_term.Output.t;
     analysis : Analysis.t;
     watches : metadata list;
-    jobs : actions Job_map.t;        (** The jobs currently being used (whether running or finished). *)
+    jobs : actions Job_map.t;
+        (** The jobs currently being used (whether running or finished). *)
   }
 
   val create :
@@ -127,9 +137,9 @@ module Engine : sig
     ?trace:(results -> unit Lwt.t) ->
     (unit -> unit term) ->
     t
-  (** [create pipeline] is a new engine running [pipeline].
-      The engine will evaluate [t]'s pipeline immediately, and again whenever
-      one of its inputs changes. *)
+  (** [create pipeline] is a new engine running [pipeline]. The engine will
+      evaluate [t]'s pipeline immediately, and again whenever one of its inputs
+      changes. *)
 
   val state : t -> results
   (** The most recent results from evaluating the pipeline. *)
@@ -137,8 +147,8 @@ module Engine : sig
   val jobs : results -> actions Job_map.t
 
   val thread : t -> 'a Lwt.t
-  (** [thread t] is the engine's thread.
-      Use this to monitor the engine (in case it crashes). *)
+  (** [thread t] is the engine's thread. Use this to monitor the engine (in
+      case it crashes). *)
 
   val actions : metadata -> actions
 
@@ -147,8 +157,8 @@ module Engine : sig
   val config : t -> Config.t
 
   val is_stale : metadata -> bool
-  (** [is_stale m] is [true] if this job has signalled that
-      it should be re-evaluated. Provided for unit-tests. *)
+  (** [is_stale m] is [true] if this job has signalled that it should be
+      re-evaluated. Provided for unit-tests. *)
 
   val pp_metadata : metadata Fmt.t
 end
@@ -160,20 +170,29 @@ module Var (T : Current_term.S.T) : sig
   val get : t -> T.t term
 
   val create : name:string -> T.t Current_term.Output.t -> t
+
   val set : t -> T.t Current_term.Output.t -> unit
-  val update : t -> (T.t Current_term.Output.t -> T.t Current_term.Output.t) -> unit
+
+  val update :
+    t -> (T.t Current_term.Output.t -> T.t Current_term.Output.t) -> unit
 end
 
 val state_dir : string -> Fpath.t
-(** [state_dir name] is a directory under which state (build results, logs) can be stored.
-    [name] identifies the sub-component of OCurrent, each of which gets its own subdirectory. *)
+(** [state_dir name] is a directory under which state (build results, logs) can
+    be stored. [name] identifies the sub-component of OCurrent, each of which
+    gets its own subdirectory. *)
 
 module String : sig
   type t = string
+
   val digest : t -> string
+
   val pp : t Fmt.t
+
   val equal : t -> t -> bool
+
   val marshal : t -> string
+
   val unmarshal : string -> t
 end
 
@@ -183,10 +202,15 @@ module Unit : sig
   type t = unit
 
   val pp : t Fmt.t
+
   val compare : t -> t -> int
+
   val equal : t -> t -> bool
+
   val digest : t -> string
+
   val marshal : t -> string
+
   val unmarshal : string -> t
 end
 
@@ -195,26 +219,29 @@ module Switch : sig
       in parallel, and a reason for the shutdown may be given. *)
 
   type t
-  (** A switch limits the lifetime of an operation.
-      Cleanup operations can be registered against the switch and will
-      be called (in reverse order) when the switch is turned off. *)
+  (** A switch limits the lifetime of an operation. Cleanup operations can be
+      registered against the switch and will be called (in reverse order) when
+      the switch is turned off. *)
 
   val create : label:string -> unit -> t
   (** [create ~label ()] is a fresh switch, initially on.
-      @param label If the switch is GC'd while on, this is logged in the error message. *)
+
+      @param label
+      If the switch is GC'd while on, this is logged in the error message. *)
 
   val create_off : unit or_error -> t
   (** [create_off reason] is a fresh switch, initially (and always) off. *)
 
   val add_hook_or_exec : t -> (unit or_error -> unit Lwt.t) -> unit Lwt.t
-  (** [add_hook_or_exec switch fn] pushes [fn] on to the stack of functions to call
-      when [t] is turned off. If [t] is already off, calls [fn] immediately.
-      If [t] is in the process of being turned off, waits for that to complete
-      and then runs [fn]. *)
+  (** [add_hook_or_exec switch fn] pushes [fn] on to the stack of functions to
+      call when [t] is turned off. If [t] is already off, calls [fn]
+      immediately. If [t] is in the process of being turned off, waits for that
+      to complete and then runs [fn]. *)
 
-  val add_hook_or_exec_opt : t option -> (unit or_error -> unit Lwt.t) -> unit Lwt.t
-  (** [add_hook_or_exec_opt] is like [add_hook_or_exec], but does nothing if the switch
-      is [None]. *)
+  val add_hook_or_exec_opt :
+    t option -> (unit or_error -> unit Lwt.t) -> unit Lwt.t
+  (** [add_hook_or_exec_opt] is like [add_hook_or_exec], but does nothing if
+      the switch is [None]. *)
 
   val turn_off : t -> unit or_error -> unit Lwt.t
   (** [turn_off t reason] marks the switch as being turned off, then pops and
@@ -240,23 +267,29 @@ module Job : sig
 
   val create : switch:Switch.t -> label:string -> config:Config.t -> unit -> t
   (** [create ~switch ~label ~config ()] is a new job.
+
       @param switch Turning this off will cancel the job.
       @param label A label to use in the job's filename (for debugging). *)
 
   val start : ?timeout:Duration.t -> level:Level.t -> t -> unit Lwt.t
-  (** [start t ~level] marks [t] as running. This can only be called once per job.
-      If confirmation has been configured for [level], then this will wait for confirmation first.
-      @param timeout If given, the job will be cancelled automatically after this period of time. *)
+  (** [start t ~level] marks [t] as running. This can only be called once per
+      job. If confirmation has been configured for [level], then this will wait
+      for confirmation first.
+
+      @param timeout
+      If given, the job will be cancelled automatically after this period of
+      time. *)
 
   val start_time : t -> float Lwt.t
-  (** [start_time t] is the time when [start] was called, or an
-      unresolved promise for it if [start] hasn't been called yet. *)
+  (** [start_time t] is the time when [start] was called, or an unresolved
+      promise for it if [start] hasn't been called yet. *)
 
   val write : t -> string -> unit
   (** [write t data] appends [data] to the log. *)
 
   val log : t -> ('a, Format.formatter, unit, unit) format4 -> 'a
-  (** [log t fmt] appends a formatted message to the log, with a newline added at the end. *)
+  (** [log t fmt] appends a formatted message to the log, with a newline added
+      at the end. *)
 
   val id : t -> job_id
   (** [id t] is the unique identifier for this job. *)
@@ -274,39 +307,52 @@ module Job : sig
       is written or the log is closed. *)
 
   val lookup_running : job_id -> t option
-  (** If [lookup_running job_id] is the job [j] with id [job_id], if [is_running j]. *)
+  (** If [lookup_running job_id] is the job [j] with id [job_id], if
+      [is_running j]. *)
 
   (**/**)
 
   (* For unit tests we need our own test clock: *)
 
   val timestamp : (unit -> float) ref
+
   val sleep : (float -> unit Lwt.t) ref
 end
 
 module Process : sig
   val exec :
-    ?switch:Switch.t -> ?stdin:string ->
+    ?switch:Switch.t ->
+    ?stdin:string ->
     ?pp_error_command:(Format.formatter -> unit) ->
-    job:Job.t -> Lwt_process.command ->
+    job:Job.t ->
+    Lwt_process.command ->
     unit or_error Lwt.t
-  (** [exec ~job cmd] uses [Lwt_process] to run [cmd], with output to [job]'s log.
+  (** [exec ~job cmd] uses [Lwt_process] to run [cmd], with output to [job]'s
+      log.
+
       @param switch If this is turned off, the process is terminated.
       @param stdin Data to write to stdin before closing it.
-      @param pp_error_command Format the command for an error message.
-        The default is to print "Command $cmd". *)
+      @param pp_error_command
+      Format the command for an error message. The default is to print "Command
+      $cmd". *)
 
   val check_output :
-    ?switch:Switch.t -> ?cwd:Fpath.t -> ?stdin:string ->
+    ?switch:Switch.t ->
+    ?cwd:Fpath.t ->
+    ?stdin:string ->
     ?pp_error_command:(Format.formatter -> unit) ->
-    job:Job.t -> Lwt_process.command ->
+    job:Job.t ->
+    Lwt_process.command ->
     string or_error Lwt.t
-  (** Like [exec], but return the child's stdout as a string rather than writing it to the log. *)
+  (** Like [exec], but return the child's stdout as a string rather than
+      writing it to the log. *)
 
   val with_tmpdir : ?prefix:string -> (Fpath.t -> 'a Lwt.t) -> 'a Lwt.t
-  (** [with_tmpdir fn] creates a temporary directory, runs [fn tmpdir], and then deletes the directory
-      (recursively).
-      @param prefix Allows giving the directory a more meaningful name (for debugging). *)
+  (** [with_tmpdir fn] creates a temporary directory, runs [fn tmpdir], and
+      then deletes the directory (recursively).
+
+      @param prefix
+      Allows giving the directory a more meaningful name (for debugging). *)
 end
 
 module Db : sig
@@ -316,22 +362,23 @@ module Db : sig
   (** An sqlite database stored in [state_dir "db"]. *)
 
   val exec : Sqlite3.stmt -> Sqlite3.Data.t list -> unit
-  (** [exec stmt values] executes [stmt values].
-      Raises an exception on error. *)
+  (** [exec stmt values] executes [stmt values]. Raises an exception on error. *)
 
   val query : Sqlite3.stmt -> Sqlite3.Data.t list -> Sqlite3.Data.t list list
-  (** [query stmt values] executes the SQL query [stmt values] and returns the resulting rows. *)
+  (** [query stmt values] executes the SQL query [stmt values] and returns the
+      resulting rows. *)
 
   val query_one : Sqlite3.stmt -> Sqlite3.Data.t list -> Sqlite3.Data.t list
-  (** [query_one stmt values] executes the SQL query [stmt values] and returns the single resulting row.
-      Raises an exception if there are no results or multiple results. *)
+  (** [query_one stmt values] executes the SQL query [stmt values] and returns
+      the single resulting row. Raises an exception if there are no results or
+      multiple results. *)
 
-  val query_some : Sqlite3.stmt -> Sqlite3.Data.t list -> Sqlite3.Data.t list option
-  (** [query_some stmt values] executes the SQL query [stmt values] and returns the single resulting row,
-      or [None] if there are no results.
-      Raises an exception if there are multiple results. *)
+  val query_some :
+    Sqlite3.stmt -> Sqlite3.Data.t list -> Sqlite3.Data.t list option
+  (** [query_some stmt values] executes the SQL query [stmt values] and returns
+      the single resulting row, or [None] if there are no results. Raises an
+      exception if there are multiple results. *)
 
   val exec_literal : t -> string -> unit
-  (** [exec_literal t sql] executes [sql] on [t].
-      Raises an exception on error. *)
+  (** [exec_literal t sql] executes [sql] on [t]. Raises an exception on error. *)
 end

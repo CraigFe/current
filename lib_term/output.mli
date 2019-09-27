@@ -1,7 +1,5 @@
-type active = [`Ready | `Running]
-  [@@deriving eq]
+type active = [ `Ready | `Running ] [@@deriving eq]
 
-type 'a t = ('a, [`Active of active | `Msg of string]) result
-  [@@deriving eq]
+type 'a t = ('a, [ `Active of active | `Msg of string ]) result [@@deriving eq]
 
-val pp : 'a Fmt.t -> ('a, [< `Active of active | `Msg of string]) result Fmt.t
+val pp : 'a Fmt.t -> ('a, [< `Active of active | `Msg of string ]) result Fmt.t

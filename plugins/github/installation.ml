@@ -10,38 +10,45 @@ type t = {
 
 let installation_repositories_cond = Lwt_condition.create ()
 
-let input_installation_repositories_webhook () = Lwt_condition.broadcast installation_repositories_cond ()
+let input_installation_repositories_webhook () =
+  Lwt_condition.broadcast installation_repositories_cond ()
 
 let pp f t = Fmt.string f t.account
 
-let list_repositories_endpoint = Uri.of_string "https://api.github.com/installation/repositories"
+let list_repositories_endpoint =
+  Uri.of_string "https://api.github.com/installation/repositories"
 
 let list_repositories ~token ~account =
   let headers = Cohttp.Header.init_with "Authorization" ("bearer " ^ token) in
-  let headers = Cohttp.Header.add headers "accept" "application/vnd.github.machine-man-preview+json" in
-  let uri = list_repositories_endpoint  in
+  let headers =
+    Cohttp.Header.add headers "accept"
+      "application/vnd.github.machine-man-preview+json"
+  in
+  let uri = list_repositories_endpoint in
   Log.debug (fun f -> f "Get repositories for %S from %a" account Uri.pp uri);
   Cohttp_lwt_unix.Client.get ~headers uri >>= fun (resp, body) ->
   Cohttp_lwt.Body.to_string body >|= fun body ->
   match Cohttp.Response.status resp with
   | `OK ->
-    let json = Yojson.Safe.from_string body in
-    Log.debug (fun f -> f "@[<v2>Got response:@,%a@]" Yojson.Safe.pp json);
-    let open Yojson.Safe.Util in
-    json |> member "repositories" |> to_list |> List.map @@ fun r ->
-    let name = r |> member "name" |> to_string in
-    Repo_id.{ owner = account; name }
-  | err -> Fmt.failwith "@[<v2>Error accessing GitHub installation API at %a: %s@,%s@]"
-             Uri.pp uri
-             (Cohttp.Code.string_of_status err)
-             body
+      let json = Yojson.Safe.from_string body in
+      Log.debug (fun f -> f "@[<v2>Got response:@,%a@]" Yojson.Safe.pp json);
+      let open Yojson.Safe.Util in
+      json |> member "repositories" |> to_list
+      |> List.map @@ fun r ->
+         let name = r |> member "name" |> to_string in
+         Repo_id.{ owner = account; name }
+  | err ->
+      Fmt.failwith
+        "@[<v2>Error accessing GitHub installation API at %a: %s@,%s@]" Uri.pp
+        uri
+        (Cohttp.Code.string_of_status err)
+        body
 
 let v ~iid ~account ~api =
   let read () =
     Api.get_token api >>= function
     | Error (`Msg m) -> Lwt.fail_with m
-    | Ok token ->
-      list_repositories ~token ~account >|= Stdlib.Result.ok
+    | Ok token -> list_repositories ~token ~account >|= Stdlib.Result.ok
   in
   let watch refresh =
     let rec aux event =
@@ -51,7 +58,10 @@ let v ~iid ~account ~api =
       aux event
     in
     let thread = aux (Lwt_condition.wait installation_repositories_cond) in
-    Lwt.return (fun () -> Lwt.cancel thread; Lwt.return_unit) in
+    Lwt.return (fun () ->
+        Lwt.cancel thread;
+        Lwt.return_unit)
+  in
   let pp f = Fmt.string f account in
   let repos = Current.monitor ~read ~watch ~pp in
   { iid; account; api; repos }
@@ -59,6 +69,6 @@ let v ~iid ~account ~api =
 let api t = t.api
 
 let repositories t =
-  Current.component "list repos" |>
-  let> t = t in
-  t.repos
+  Current.component "list repos"
+  |> let> t = t in
+     t.repos
