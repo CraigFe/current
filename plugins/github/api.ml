@@ -92,7 +92,7 @@ let no_token = {
 module Commit_id = struct
   type t = {
     owner_name : string;    (* e.g. "owner/name" *)
-    id : [ `Ref of string | `PR of int ];
+    id : [ `Ref of string | `PR of int * string ];
     hash : string;
   } [@@deriving to_yojson]
 
@@ -101,13 +101,13 @@ module Commit_id = struct
     let gref =
       match id with
       | `Ref head -> head
-      | `PR id -> Fmt.strf "refs/pull/%d/head" id
+      | `PR (id, _) -> Fmt.strf "refs/pull/%d/head" id
     in
     Current_git.Commit_id.v ~repo ~gref ~hash
 
   let pp_id f = function
     | `Ref r -> Fmt.string f r
-    | `PR pr -> Fmt.pf f "PR %d" pr
+    | `PR (id, title) -> Fmt.pf f "PR %d: %s" id title
 
   let pp f { owner_name; id; hash } =
     Fmt.pf f "@[<v>%s@,%a@,%s@]" owner_name pp_id id (Astring.String.with_range ~len:8 hash)
@@ -307,6 +307,7 @@ let query_branches_and_open_prs = {|
         edges {
           node {
             number
+            title
             headRefOid
           }
         }
@@ -326,8 +327,9 @@ let parse_pr ~owner_name json =
   let open Yojson.Safe.Util in
   let node = json / "node" in
   let hash = node / "headRefOid" |> to_string in
-  let pr = node / "number" |> to_int in
-  { Commit_id.owner_name; id = `PR pr; hash }
+  let pr_no = node / "number" |> to_int in
+  let pr_title = node / "title" |> to_string in
+  { Commit_id.owner_name; id = `PR (pr_no, pr_title); hash }
 
 let get_ci_refs t { Repo_id.owner; name } =
     let variables = [
